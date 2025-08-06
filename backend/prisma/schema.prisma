@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================
+// ENUMS (Pre-defined sets of choices)
+// =============================================
+
+enum UserRole {
+  ADMIN
+  MENU_MANAGER
+  STAFF
+  WAITER
+  KITCHEN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+enum PromoCodeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PrinterConnectionType {
+  IP
+  SHARED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderStatus {
+  OPEN
+  BILLED
+  SETTLED
+  CANCELLED
+}
+
+enum KOTStatus {
+  NEW
+  PREPARING
+  READY
+}
+
+enum CashLedgerEntryType {
+  OPENING_BALANCE
+  CASH_SALE
+  CASH_IN
+  CASH_OUT
+}
+
+enum ModifierGroupType {
+  REQUIRED
+  OPTIONAL
+}
+
+// =============================================
+// MODELS (Database Tables)
+// =============================================
+
+// --- Module 1: User Management ---
+model User {
+  id                Int                 @id @default(autoincrement())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  username          String              @unique
+  password          String
+  role              UserRole            @default(WAITER)
+  status            UserStatus          @default(ACTIVE)
+  orders            Order[]
+  cashLedgerEntries CashLedgerEntry[]
+}
+
+// --- Module 2: Settings ---
+
+// Menu Management
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  menuItems MenuItem[]
+}
+
+model MenuItem {
+  id             Int                     @id @default(autoincrement())
+  name           String
+  description    String?
+  price          Float
+  barcode        String?                 @unique
+  categoryId     Int
+  category       Category                @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  kitchenId      Int?
+  kitchen        Kitchen?                @relation(fields: [kitchenId], references: [id], onDelete: SetNull)
+  gstSlabId      Int?
+  gstSlab        GstSlab?                @relation(fields: [gstSlabId], references: [id], onDelete: SetNull)
+  modifierGroups MenuItemModifierGroup[]
+  orderItems     OrderItem[]
+}
+
+model ModifierGroup {
+  id        Int                     @id @default(autoincrement())
+  name      String                  @unique
+  type      ModifierGroupType       @default(OPTIONAL)
+  modifiers Modifier[]
+  menuItems MenuItemModifierGroup[]
+}
+
+model Modifier {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  price              Float
+  modifierGroupId    Int
+  modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  orderItemModifiers OrderItemModifier[]
+}
+
+model MenuItemModifierGroup {
+  menuItem      MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemId    Int
+  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  modifierGroupId Int
+  @@id([menuItemId, modifierGroupId])
+}
+
+// Table Management
+model TableArea {
+  id     Int     @id @default(autoincrement())
+  name   String  @unique
+  tables Table[]
+}
+
+model Table {
+  id          Int       @id @default(autoincrement())
+  name        String
+  tableAreaId Int
+  tableArea   TableArea @relation(fields: [tableAreaId], references: [id], onDelete: Cascade)
+  orders      Order[]
+  @@unique([name, tableAreaId])
+}
+
+// Kitchen Management
+model Kitchen {
+  id                 Int                         @id @default(autoincrement())
+  name               String                      @unique
+  menuItems          MenuItem[]
+  terminalPrinterMap TerminalKitchenPrinterMap[]
+  kots               KOT[]
+}
+
+// GST Slab Management
+model GstSlab {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  cgstRate Float
+  sgstRate Float
+  menuItems MenuItem[]
+}
+
+// Printer Configuration
+model Printer {
+  id                   Int                         @id @default(autoincrement())
+  name                 String                      @unique
+  connectionType       PrinterConnectionType
+  path                 String
+  defaultBillTerminals Terminal[]
+  kotTerminals         TerminalKitchenPrinterMap[]
+}
+
+// Terminal Management
+model Terminal {
+  id                   Int                         @id @default(autoincrement())
+  name                 String                      @unique
+  ipAddress            String                      @unique
+  defaultBillPrinterId Int
+  defaultBillPrinter   Printer                     @relation(fields: [defaultBillPrinterId], references: [id], onDelete: Restrict)
+  kitchenPrinterMap    TerminalKitchenPrinterMap[]
+  cashLedgerEntries    CashLedgerEntry[]
+}
+
+model TerminalKitchenPrinterMap {
+  id         Int      @id @default(autoincrement())
+  terminalId Int
+  terminal   Terminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  kitchenId  Int
+  kitchen    Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  printerId  Int
+  printer    Printer  @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  @@unique([terminalId, kitchenId])
+}
+
+// Promo Code Management
+model PromoCode {
+  id           Int             @id @default(autoincrement())
+  code         String          @unique
+  discountType DiscountType
+  value        Float
+  expiryDate   DateTime?
+  status       PromoCodeStatus @default(ACTIVE)
+}
+
+// Invoice Customization
+model InvoiceTemplate {
+  id            Int     @id @default(1) // Only one template
+  logoUrl       String?
+  restaurantName String
+  address       String?
+  phone         String?
+  gstin         String?
+  footerText    String?
+}
+
+// --- Customer Management ---
+model Customer {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  name      String
+  phone     String   @unique
+  orders    Order[]
+}
+
+// --- Billing & Order Models ---
+model Order {
+  id             Int         @id @default(autoincrement())
+  createdAt      DateTime    @default(now())
+  orderType      OrderType
+  status         OrderStatus @default(OPEN)
+  totalAmount    Float
+  discountAmount Float       @default(0)
+  taxAmount      Float
+  grandTotal     Float
+  tableId        Int?
+  table          Table?      @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customerId     Int?
+  customer       Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdById    Int
+  createdBy      User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  items          OrderItem[]
+  kots           KOT[]
+}
+
+model OrderItem {
+  id                 Int                 @id @default(autoincrement())
+  quantity           Int
+  priceAtOrder       Float
+  orderId            Int
+  order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId         Int
+  menuItem           MenuItem            @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  orderItemModifiers OrderItemModifier[]
+  kotItems           KOTItem[]
+}
+
+model OrderItemModifier {
+  id           Int       @id @default(autoincrement())
+  priceAtOrder Float
+  orderItemId  Int
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifierId   Int
+  modifier     Modifier  @relation(fields: [modifierId], references: [id], onDelete: Restrict)
+}
+
+// Kitchen Display System Model
+model KOT {
+  id        Int       @id @default(autoincrement())
+  createdAt DateTime  @default(now())
+  status    KOTStatus @default(NEW)
+  orderId   Int
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kitchenId Int
+  kitchen   Kitchen   @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  items     KOTItem[]
+}
+
+model KOTItem {
+  id          Int       @id @default(autoincrement())
+  kotId       Int
+  kot         KOT       @relation(fields: [kotId], references: [id], onDelete: Cascade)
+  orderItemId Int
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+// Cash Ledger Model
+model CashLedgerEntry {
+  id         Int                 @id @default(autoincrement())
+  createdAt  DateTime            @default(now())
+  type       CashLedgerEntryType
+  amount     Float
+  remarks    String?
+  terminalId Int
+  terminal   Terminal            @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+}

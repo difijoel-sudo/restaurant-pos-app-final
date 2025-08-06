@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  postgres-db:
+    image: postgres:14-alpine
+    container_name: pos_db_final
+    restart: always
+    environment:
+      POSTGRES_USER: pos_user_final
+      POSTGRES_PASSWORD: final_password
+      POSTGRES_DB: restaurant_pos_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_final:/var/lib/postgresql/data
+
+volumes:
+  postgres_data_final:
